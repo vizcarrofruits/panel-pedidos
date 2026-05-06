@@ -11,41 +11,30 @@
       <header class="panel__header">
         <div>
           <p class="eyebrow">Pedidos</p>
-          <h1>Panel de seguimiento</h1>
+          <h1>Pedido final</h1>
         </div>
-        <div class="metric" aria-label="Pedidos pendientes">
-          <span id="pendingCount">0</span>
-          <small>pendientes</small>
+        <div class="metrics" aria-label="Resumen de pedidos">
+          <div class="metric">
+            <span id="totalOrders">0</span>
+            <small>pedidos</small>
+          </div>
+          <div class="metric">
+            <span id="totalLines">0</span>
+            <small>lineas/productos</small>
+          </div>
         </div>
       </header>
 
-      <section class="toolbar" aria-label="Filtros de pedidos">
-        <div class="tabs" role="tablist" aria-label="Estado">
-          <button class="tab is-active" type="button" data-filter="todos">Todos</button>
-          <button class="tab" type="button" data-filter="pendientes">Pendientes</button>
-        </div>
+      <section class="toolbar" aria-label="Busqueda de pedidos">
         <label class="search">
           <span>Buscar</span>
-          <input id="searchInput" type="search" placeholder="Cliente o telefono" autocomplete="off">
+          <input id="searchInput" type="search" placeholder="Telefono, pedido o producto" autocomplete="off">
         </label>
       </section>
 
       <p id="statusMessage" class="status" role="status">Cargando datos...</p>
 
-      <section class="table-wrap" aria-label="Listado de pedidos">
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Cliente</th>
-              <th>Telefono</th>
-              <th>Mensaje</th>
-              <th>Estado</th>
-              <th>Accion</th>
-            </tr>
-          </thead>
-          <tbody id="ordersTable"></tbody>
-        </table>
+      <section id="ordersList" class="orders" aria-label="Listado de pedidos">
       </section>
     </main>
 
