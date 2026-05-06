@@ -1,13 +1,14 @@
 const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQao88aRPKS6-RFK403BkIXIPhbcYf9_NFH3sgKPSEVBc56ReBYvaWt-nYonNPB9YnX4CdP4Y5Uu3Nn/pub?gid=1622223229&single=true&output=csv";
+const WEBHOOK_URL = "https://hook.eu1.make.com/pgjgmlp98cjw5rxxh2p15a034jqpdh2a";
 
 const REFRESH_INTERVAL_MS = 30000;
-const COMPLETED_STORAGE_KEY = "pedido_final_completed_orders";
 
 let rows = [];
 let groupedOrders = [];
 let currentFilter = "todos";
 const expandedOrders = new Set();
+const updatingOrders = new Set();
 
 const totalOrders = document.querySelector("#totalOrders");
 const pendingOrders = document.querySelector("#pendingOrders");
@@ -37,14 +38,14 @@ filterButtons.forEach((button) => {
 
 ordersList.addEventListener("click", (event) => {
   const toggleButton = event.target.closest("[data-toggle-products]");
-  const completeButton = event.target.closest("[data-toggle-completed]");
+  const statusButton = event.target.closest("[data-toggle-status]");
 
   if (toggleButton) {
     toggleProducts(toggleButton.dataset.orderId);
   }
 
-  if (completeButton) {
-    toggleCompleted(completeButton.dataset.orderId);
+  if (statusButton) {
+    updateOrderStatus(statusButton.dataset.orderId);
   }
 });
 
@@ -104,6 +105,7 @@ function groupRowsByOrder(sourceRows) {
       orderMap.set(pedidoId, {
         pedido_id: pedidoId,
         telefono: row.telefono || "",
+        estado: normalizeStatus(row.estado),
         productos: [],
       });
     }
@@ -112,6 +114,10 @@ function groupRowsByOrder(sourceRows) {
 
     if (!order.telefono && row.telefono) {
       order.telefono = row.telefono;
+    }
+
+    if (normalizeStatus(row.estado) === "preparado") {
+      order.estado = "preparado";
     }
 
     order.productos.push({
@@ -173,23 +179,21 @@ function parseCsv(csvText) {
 }
 
 function updateTotals() {
-  const completedIds = getCompletedIds();
-  const completedTotal = groupedOrders.filter((order) => completedIds.has(order.pedido_id)).length;
+  const preparedTotal = groupedOrders.filter((order) => isPrepared(order)).length;
 
   totalOrders.textContent = groupedOrders.length;
-  pendingOrders.textContent = groupedOrders.length - completedTotal;
-  completedOrders.textContent = completedTotal;
+  pendingOrders.textContent = groupedOrders.length - preparedTotal;
+  completedOrders.textContent = preparedTotal;
 }
 
 function renderOrders() {
   const searchTerm = normalizeText(searchInput.value);
-  const completedIds = getCompletedIds();
   const visibleOrders = groupedOrders.filter((order) => {
-    const isCompletedOrder = completedIds.has(order.pedido_id);
+    const isPreparedOrder = isPrepared(order);
     const matchesFilter =
       currentFilter === "todos" ||
-      (currentFilter === "pendientes" && !isCompletedOrder) ||
-      (currentFilter === "completados" && isCompletedOrder);
+      (currentFilter === "pendientes" && !isPreparedOrder) ||
+      (currentFilter === "preparados" && isPreparedOrder);
 
     const matchesOrder = normalizeText(order.pedido_id).includes(searchTerm);
     const matchesPhone = normalizeText(order.telefono).includes(searchTerm);
@@ -206,20 +210,20 @@ function renderOrders() {
     return;
   }
 
-  ordersList.innerHTML = visibleOrders
-    .map((order) => orderRowTemplate(order, completedIds.has(order.pedido_id)))
-    .join("");
+  ordersList.innerHTML = visibleOrders.map(orderRowTemplate).join("");
 }
 
-function orderRowTemplate(order, isCompletedOrder) {
+function orderRowTemplate(order) {
   const productLabel = order.productos.length === 1 ? "producto" : "productos";
   const isExpanded = expandedOrders.has(order.pedido_id);
-  const status = isCompletedOrder ? "completado" : "pendiente";
-  const itemClass = isCompletedOrder ? " order-item is-completed" : "order-item";
-  const statusClass = isCompletedOrder ? "status-badge--completed" : "status-badge--pending";
+  const isPreparedOrder = isPrepared(order);
+  const isUpdating = updatingOrders.has(order.pedido_id);
+  const status = isPreparedOrder ? "preparado" : "pendiente";
+  const itemClass = isPreparedOrder ? "order-item is-completed" : "order-item";
+  const statusClass = isPreparedOrder ? "status-badge--completed" : "status-badge--pending";
   const detailId = `products-${slugify(order.pedido_id)}`;
   const toggleText = isExpanded ? "Ocultar productos" : "Ver productos";
-  const completeText = isCompletedOrder ? "Reabrir" : "Completar";
+  const statusButtonText = isUpdating ? "Enviando..." : isPreparedOrder ? "Reabrir" : "Preparado";
 
   return `
     <article class="${itemClass}">
@@ -241,10 +245,11 @@ function orderRowTemplate(order, isCompletedOrder) {
         <button
           class="action-button action-button--primary"
           type="button"
-          data-toggle-completed
+          data-toggle-status
           data-order-id="${escapeHtml(order.pedido_id)}"
+          ${isUpdating ? "disabled" : ""}
         >
-          ${completeText}
+          ${statusButtonText}
         </button>
       </div>
       ${
@@ -285,6 +290,15 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function normalizeStatus(value) {
+  const status = normalizeText(value);
+  return status || "pendiente";
+}
+
+function isPrepared(order) {
+  return normalizeStatus(order.estado) === "preparado";
+}
+
 function toggleProducts(orderId) {
   if (expandedOrders.has(orderId)) {
     expandedOrders.delete(orderId);
@@ -295,34 +309,42 @@ function toggleProducts(orderId) {
   renderOrders();
 }
 
-function toggleCompleted(orderId) {
-  const completedIds = getCompletedIds();
+async function updateOrderStatus(orderId) {
+  const order = groupedOrders.find((item) => item.pedido_id === orderId);
 
-  if (completedIds.has(orderId)) {
-    completedIds.delete(orderId);
-  } else {
-    completedIds.add(orderId);
+  if (!order || updatingOrders.has(orderId)) {
+    return;
   }
 
-  saveCompletedIds(completedIds);
-  updateTotals();
+  const nextStatus = isPrepared(order) ? "pendiente" : "preparado";
+  updatingOrders.add(orderId);
+  setStatus("Enviando estado a Make...");
   renderOrders();
-}
 
-function getCompletedIds() {
   try {
-    const savedValue = localStorage.getItem(COMPLETED_STORAGE_KEY);
-    const ids = savedValue ? JSON.parse(savedValue) : [];
+    const response = await fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        pedido_id: order.pedido_id,
+        estado: nextStatus,
+      }),
+    });
 
-    return new Set(Array.isArray(ids) ? ids : []);
+    if (!response.ok) {
+      throw new Error("Make no devolvio OK.");
+    }
+
+    await loadOrders();
   } catch (error) {
+    setStatus("No se pudo actualizar el estado. Intentalo de nuevo.");
     console.error(error);
-    return new Set();
+  } finally {
+    updatingOrders.delete(orderId);
+    renderOrders();
   }
-}
-
-function saveCompletedIds(completedIds) {
-  localStorage.setItem(COMPLETED_STORAGE_KEY, JSON.stringify(Array.from(completedIds)));
 }
 
 function slugify(value) {
