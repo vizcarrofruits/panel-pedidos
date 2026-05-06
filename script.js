@@ -322,25 +322,35 @@ async function updateOrderStatus(orderId) {
   renderOrders();
 
   try {
+    const payload = {
+      pedido_id: order.pedido_id,
+      estado: nextStatus,
+    };
+
+    console.log("URL del webhook:", WEBHOOK_URL);
+    console.log("pedido_id enviado:", payload.pedido_id);
+    console.log("estado enviado:", payload.estado);
+
     const response = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        pedido_id: order.pedido_id,
-        estado: nextStatus,
-      }),
+      body: JSON.stringify(payload),
     });
+    const makeResponse = await response.text();
+
+    console.log("respuesta de Make:", makeResponse);
 
     if (!response.ok) {
-      throw new Error("Make no devolvio OK.");
+      throw new Error(`Make no devolvio OK: ${response.status} ${makeResponse}`);
     }
 
     await loadOrders();
   } catch (error) {
     setStatus("No se pudo actualizar el estado. Intentalo de nuevo.");
     console.error(error);
+    alert(`No se pudo actualizar el estado: ${error.message}`);
   } finally {
     updatingOrders.delete(orderId);
     renderOrders();
