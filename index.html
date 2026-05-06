@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Panel de pedidos</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main>
+      <section class="panel" aria-labelledby="page-title">
+        <header class="topbar">
+          <div>
+            <h1 id="page-title">Panel de pedidos</h1>
+            <div class="meta" id="summary">Cargando datos...</div>
+          </div>
+          <div class="counter" aria-live="polite">
+            <div class="counter-label">Pendientes</div>
+            <div class="counter-value" id="pendingCount">0</div>
+          </div>
+        </header>
+
+        <div class="local-warning" id="localWarning">
+          Abre esta web con http://localhost:8000 para que el navegador pueda cargar el CSV correctamente.
+        </div>
+
+        <div class="controls">
+          <div class="field">
+            <label for="searchInput">Buscar cliente o telefono</label>
+            <input id="searchInput" type="search" placeholder="Nombre o numero de telefono">
+          </div>
+
+          <div class="field">
+            <div class="control-label">Filtro</div>
+            <div class="segmented" role="radiogroup" aria-label="Filtro de pedidos">
+              <label>
+                <input type="radio" name="filter" value="all" checked>
+                <span>Todos</span>
+              </label>
+              <label>
+                <input type="radio" name="filter" value="pending">
+                <span>Pendientes</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="status" id="loadStatus">Actualizando...</div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Telefono</th>
+                <th>Mensaje</th>
+                <th>Estado</th>
+                <th>Accion</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty" id="emptyState" hidden>No se han encontrado pedidos</div>
+      </section>
+    </main>
+
+    <script src="script.js" defer></script>
+  </body>
+</html>
