@@ -2,15 +2,20 @@ const CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQao88aRPKS6-RFK403BkIXIPhbcYf9_NFH3sgKPSEVBc56ReBYvaWt-nYonNPB9YnX4CdP4Y5Uu3Nn/pub?gid=1622223229&single=true&output=csv";
 
 const REFRESH_INTERVAL_MS = 30000;
+const COMPLETED_STORAGE_KEY = "pedido_final_completed_orders";
 
 let rows = [];
 let groupedOrders = [];
+let currentFilter = "todos";
+const expandedOrders = new Set();
 
 const totalOrders = document.querySelector("#totalOrders");
-const totalLines = document.querySelector("#totalLines");
+const pendingOrders = document.querySelector("#pendingOrders");
+const completedOrders = document.querySelector("#completedOrders");
 const ordersList = document.querySelector("#ordersList");
 const searchInput = document.querySelector("#searchInput");
 const statusMessage = document.querySelector("#statusMessage");
+const filterButtons = document.querySelectorAll("[data-filter]");
 
 document.addEventListener("DOMContentLoaded", () => {
   loadOrders();
@@ -18,6 +23,30 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 searchInput.addEventListener("input", renderOrders);
+
+filterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    currentFilter = button.dataset.filter;
+
+    filterButtons.forEach((item) => item.classList.remove("is-active"));
+    button.classList.add("is-active");
+
+    renderOrders();
+  });
+});
+
+ordersList.addEventListener("click", (event) => {
+  const toggleButton = event.target.closest("[data-toggle-products]");
+  const completeButton = event.target.closest("[data-toggle-completed]");
+
+  if (toggleButton) {
+    toggleProducts(toggleButton.dataset.orderId);
+  }
+
+  if (completeButton) {
+    toggleCompleted(completeButton.dataset.orderId);
+  }
+});
 
 async function loadOrders() {
   try {
@@ -144,24 +173,32 @@ function parseCsv(csvText) {
 }
 
 function updateTotals() {
+  const completedIds = getCompletedIds();
+  const completedTotal = groupedOrders.filter((order) => completedIds.has(order.pedido_id)).length;
+
   totalOrders.textContent = groupedOrders.length;
-  totalLines.textContent = groupedOrders.reduce((total, order) => total + order.productos.length, 0);
+  pendingOrders.textContent = groupedOrders.length - completedTotal;
+  completedOrders.textContent = completedTotal;
 }
 
 function renderOrders() {
   const searchTerm = normalizeText(searchInput.value);
+  const completedIds = getCompletedIds();
   const visibleOrders = groupedOrders.filter((order) => {
-    if (!searchTerm) {
-      return true;
-    }
+    const isCompletedOrder = completedIds.has(order.pedido_id);
+    const matchesFilter =
+      currentFilter === "todos" ||
+      (currentFilter === "pendientes" && !isCompletedOrder) ||
+      (currentFilter === "completados" && isCompletedOrder);
 
     const matchesOrder = normalizeText(order.pedido_id).includes(searchTerm);
     const matchesPhone = normalizeText(order.telefono).includes(searchTerm);
     const matchesProduct = order.productos.some((product) =>
       normalizeText(product.producto_normalizado).includes(searchTerm),
     );
+    const matchesSearch = !searchTerm || matchesOrder || matchesPhone || matchesProduct;
 
-    return matchesOrder || matchesPhone || matchesProduct;
+    return matchesFilter && matchesSearch;
   });
 
   if (visibleOrders.length === 0) {
@@ -169,24 +206,54 @@ function renderOrders() {
     return;
   }
 
-  ordersList.innerHTML = visibleOrders.map(orderCardTemplate).join("");
+  ordersList.innerHTML = visibleOrders
+    .map((order) => orderRowTemplate(order, completedIds.has(order.pedido_id)))
+    .join("");
 }
 
-function orderCardTemplate(order) {
+function orderRowTemplate(order, isCompletedOrder) {
   const productLabel = order.productos.length === 1 ? "producto" : "productos";
+  const isExpanded = expandedOrders.has(order.pedido_id);
+  const status = isCompletedOrder ? "completado" : "pendiente";
+  const itemClass = isCompletedOrder ? " order-item is-completed" : "order-item";
+  const statusClass = isCompletedOrder ? "status-badge--completed" : "status-badge--pending";
+  const detailId = `products-${slugify(order.pedido_id)}`;
+  const toggleText = isExpanded ? "Ocultar productos" : "Ver productos";
+  const completeText = isCompletedOrder ? "Reabrir" : "Completar";
 
   return `
-    <article class="order-card">
-      <header class="order-card__header">
-        <div>
-          <h2 class="order-card__id">${escapeHtml(order.pedido_id)}</h2>
-          <p class="order-card__phone">${escapeHtml(order.telefono)}</p>
-        </div>
-        <span class="badge">${order.productos.length} ${productLabel}</span>
-      </header>
-      <div class="products">
-        ${order.productos.map(productRowTemplate).join("")}
+    <article class="${itemClass}">
+      <div class="order-summary">
+        <span class="order-id">${escapeHtml(order.pedido_id)}</span>
+        <span class="order-phone">${escapeHtml(order.telefono)}</span>
+        <span class="product-count">${order.productos.length} ${productLabel}</span>
+        <span class="status-badge ${statusClass}">${status}</span>
+        <button
+          class="action-button action-button--secondary"
+          type="button"
+          data-toggle-products
+          data-order-id="${escapeHtml(order.pedido_id)}"
+          aria-expanded="${isExpanded}"
+          aria-controls="${escapeHtml(detailId)}"
+        >
+          ${toggleText}
+        </button>
+        <button
+          class="action-button action-button--primary"
+          type="button"
+          data-toggle-completed
+          data-order-id="${escapeHtml(order.pedido_id)}"
+        >
+          ${completeText}
+        </button>
       </div>
+      ${
+        isExpanded
+          ? `<div class="products" id="${escapeHtml(detailId)}">
+              ${order.productos.map(productRowTemplate).join("")}
+            </div>`
+          : ""
+      }
     </article>
   `;
 }
@@ -216,6 +283,50 @@ function normalizeText(value) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+function toggleProducts(orderId) {
+  if (expandedOrders.has(orderId)) {
+    expandedOrders.delete(orderId);
+  } else {
+    expandedOrders.add(orderId);
+  }
+
+  renderOrders();
+}
+
+function toggleCompleted(orderId) {
+  const completedIds = getCompletedIds();
+
+  if (completedIds.has(orderId)) {
+    completedIds.delete(orderId);
+  } else {
+    completedIds.add(orderId);
+  }
+
+  saveCompletedIds(completedIds);
+  updateTotals();
+  renderOrders();
+}
+
+function getCompletedIds() {
+  try {
+    const savedValue = localStorage.getItem(COMPLETED_STORAGE_KEY);
+    const ids = savedValue ? JSON.parse(savedValue) : [];
+
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch (error) {
+    console.error(error);
+    return new Set();
+  }
+}
+
+function saveCompletedIds(completedIds) {
+  localStorage.setItem(COMPLETED_STORAGE_KEY, JSON.stringify(Array.from(completedIds)));
+}
+
+function slugify(value) {
+  return normalizeText(value).replace(/[^a-z0-9_-]+/g, "-") || "sin-pedido";
 }
 
 function toNumber(value) {

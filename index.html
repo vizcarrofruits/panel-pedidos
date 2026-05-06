@@ -16,16 +16,25 @@
         <div class="metrics" aria-label="Resumen de pedidos">
           <div class="metric">
             <span id="totalOrders">0</span>
-            <small>pedidos</small>
+            <small>totales</small>
           </div>
           <div class="metric">
-            <span id="totalLines">0</span>
-            <small>lineas/productos</small>
+            <span id="pendingOrders">0</span>
+            <small>pendientes</small>
+          </div>
+          <div class="metric">
+            <span id="completedOrders">0</span>
+            <small>completados</small>
           </div>
         </div>
       </header>
 
-      <section class="toolbar" aria-label="Busqueda de pedidos">
+      <section class="toolbar" aria-label="Filtros y busqueda de pedidos">
+        <div class="tabs" role="tablist" aria-label="Estado">
+          <button class="tab is-active" type="button" data-filter="todos">Todos</button>
+          <button class="tab" type="button" data-filter="pendientes">Pendientes</button>
+          <button class="tab" type="button" data-filter="completados">Completados</button>
+        </div>
         <label class="search">
           <span>Buscar</span>
           <input id="searchInput" type="search" placeholder="Telefono, pedido o producto" autocomplete="off">
